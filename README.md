@@ -8,7 +8,7 @@ Gmailに届く三井住友カードのデビット利用通知をmessage単位�
 
 | 名前 | 型 | 用途 |
 |---|---|---|
-| `日付` | テキスト | `YYYY/M/D`形式（例：`2026/8/23`）の集計日（一意にしてください） |
+| `日付` | タイトル | `YYYY/M/D`形式（例：`2026/8/23`）の集計日（一意にしてください） |
 | `合計額` | Number | その日のJPY合計 |
 
 Notion Integrationを作り、対象データベースの接続先に追加して、Internal Integration SecretとDatabase IDを控えます。
@@ -27,7 +27,7 @@ Repository Settings → Secrets and variables → Actions に以下のSecretsを
 - `NOTION_TOKEN`
 - `NOTION_DATABASE_ID`
 
-Notionのプロパティ名が異なる場合だけ、Variablesに`NOTION_DATE_PROPERTY`と`NOTION_AMOUNT_PROPERTY`を登録します。日付列をNotionのDate型で使う場合は、`NOTION_DATE_PROPERTY_TYPE`に`date`を登録してください。省略時はテキスト型（`rich_text`）として処理します。
+Notionのプロパティ名が異なる場合だけ、Variablesに`NOTION_DATE_PROPERTY`と`NOTION_AMOUNT_PROPERTY`を登録します。日付列はタイトル型、金額列は数値型として処理します。
 
 ワークフローはAmsterdamの23時台を夏時間・冬時間ともカバーするようUTC 21:55と22:55に起動し、実行時にもAmsterdamの時刻を確認します。該当しない側は何も更新せず終了します。Actionsの遅延や日付をまたいだ再処理には、Run workflowの`target_date`で対象日を明示できます。
 

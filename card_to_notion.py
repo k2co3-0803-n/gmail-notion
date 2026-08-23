@@ -134,11 +134,6 @@ class NotionClient:
     def __init__(self) -> None:
         self.database_id = required_env("NOTION_DATABASE_ID")
         self.date_property = os.getenv("NOTION_DATE_PROPERTY", "日付")
-        self.date_property_type = os.getenv("NOTION_DATE_PROPERTY_TYPE", "rich_text")
-        if self.date_property_type not in {"rich_text", "date"}:
-            raise RuntimeError(
-                "NOTION_DATE_PROPERTY_TYPE must be 'rich_text' or 'date'"
-            )
         self.amount_property = os.getenv("NOTION_AMOUNT_PROPERTY", "Money I spent")
         self.session = requests.Session()
         self.session.headers.update({
@@ -158,18 +153,12 @@ class NotionClient:
         return response.json()
 
     def _date_filter(self, target_date: date) -> dict[str, Any]:
-        if self.date_property_type == "rich_text":
-            value = f"{target_date.year}/{target_date.month}/{target_date.day}"
-            return {"rich_text": {"equals": value}}
-        value = target_date.isoformat()
-        return {"date": {"equals": value}}
+        value = f"{target_date.year}/{target_date.month}/{target_date.day}"
+        return {"title": {"equals": value}}
 
     def _date_value(self, target_date: date) -> dict[str, Any]:
-        if self.date_property_type == "rich_text":
-            value = f"{target_date.year}/{target_date.month}/{target_date.day}"
-            return {"rich_text": [{"text": {"content": value}}]}
-        value = target_date.isoformat()
-        return {"date": {"start": value}}
+        value = f"{target_date.year}/{target_date.month}/{target_date.day}"
+        return {"title": [{"text": {"content": value}}]}
 
     def find_page(self, target_date: date) -> str | None:
         url = f"https://api.notion.com/v1/databases/{self.database_id}/query"
