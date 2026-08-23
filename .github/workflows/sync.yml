@@ -1,0 +1,48 @@
+name: Sync card total to Notion
+
+on:
+  schedule:
+    # Amsterdamの毎日23時台を通年カバーするため、UTC 21:55と22:55に実行。
+    # 日付判定はPython側でAmsterdam時間に変換するため、該当日の実行だけが当日を更新する。
+    - cron: "55 21,22 * * *"
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: "集計日 (YYYY-MM-DD、省略時はAmsterdamの当日)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Aggregate and sync
+        env:
+          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+          GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATE_PROPERTY: ${{ vars.NOTION_DATE_PROPERTY || '日付' }}
+          NOTION_AMOUNT_PROPERTY: ${{ vars.NOTION_AMOUNT_PROPERTY || '合計額' }}
+          TARGET_DATE: ${{ inputs.target_date }}
+        run: |
+          if [ -n "$TARGET_DATE" ]; then
+            python card_to_notion.py --date "$TARGET_DATE"
+          else
+            if [ "$(TZ=Europe/Amsterdam date +%H)" != "23" ]; then
+              echo "Amsterdamでは23時台ではないためスキップします"
+              exit 0
+            fi
+            python card_to_notion.py
+          fi
