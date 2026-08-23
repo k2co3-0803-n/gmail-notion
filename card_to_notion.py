@@ -134,6 +134,11 @@ class NotionClient:
     def __init__(self) -> None:
         self.database_id = required_env("NOTION_DATABASE_ID")
         self.date_property = os.getenv("NOTION_DATE_PROPERTY", "日付")
+        self.date_property_type = os.getenv("NOTION_DATE_PROPERTY_TYPE", "rich_text")
+        if self.date_property_type not in {"rich_text", "date"}:
+            raise RuntimeError(
+                "NOTION_DATE_PROPERTY_TYPE must be 'rich_text' or 'date'"
+            )
         self.amount_property = os.getenv("NOTION_AMOUNT_PROPERTY", "Money I spent")
         self.session = requests.Session()
         self.session.headers.update({
@@ -144,13 +149,35 @@ class NotionClient:
 
     def _request(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
         response = self.session.request(method, url, timeout=30, **kwargs)
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            raise requests.HTTPError(
+                f"{exc}; Notion response: {response.text}", response=response
+            ) from exc
         return response.json()
+
+    def _date_filter(self, target_date: date) -> dict[str, Any]:
+        if self.date_property_type == "rich_text":
+            value = f"{target_date.year}/{target_date.month}/{target_date.day}"
+            return {"rich_text": {"equals": value}}
+        value = target_date.isoformat()
+        return {"date": {"equals": value}}
+
+    def _date_value(self, target_date: date) -> dict[str, Any]:
+        if self.date_property_type == "rich_text":
+            value = f"{target_date.year}/{target_date.month}/{target_date.day}"
+            return {"rich_text": [{"text": {"content": value}}]}
+        value = target_date.isoformat()
+        return {"date": {"start": value}}
 
     def find_page(self, target_date: date) -> str | None:
         url = f"https://api.notion.com/v1/databases/{self.database_id}/query"
         payload: dict[str, Any] = {
-            "filter": {"property": self.date_property, "date": {"equals": target_date.isoformat()}},
+            "filter": {
+                "property": self.date_property,
+                **self._date_filter(target_date),
+            },
             "page_size": 100,
         }
         while True:
@@ -164,7 +191,7 @@ class NotionClient:
     def upsert_total(self, target_date: date, total: int) -> str:
         page_id = self.find_page(target_date)
         properties = {
-            self.date_property: {"date": {"start": target_date.isoformat()}},
+            self.date_property: self._date_value(target_date),
             self.amount_property: {"number": total},
         }
         if page_id:
@@ -196,4 +223,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

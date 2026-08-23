@@ -34,6 +34,7 @@ jobs:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           NOTION_DATE_PROPERTY: ${{ vars.NOTION_DATE_PROPERTY || '日付' }}
+          NOTION_DATE_PROPERTY_TYPE: ${{ vars.NOTION_DATE_PROPERTY_TYPE || 'rich_text' }}
           NOTION_AMOUNT_PROPERTY: ${{ vars.NOTION_AMOUNT_PROPERTY || '合計額' }}
           TARGET_DATE: ${{ inputs.target_date }}
         run: |

@@ -1,7 +1,7 @@
 import base64
 from datetime import date
 
-from card_to_notion import SUBJECT, collect_usages, parse_usage
+from card_to_notion import NotionClient, SUBJECT, collect_usages, parse_usage
 
 
 def encoded(text):
@@ -59,3 +59,24 @@ def test_collects_messages_not_threads_and_filters_by_internal_date():
     usages = collect_usages(Service([same_day, next_day, wrong_subject]), date(2026, 8, 22))
     assert [usage.message_id for usage in usages] == ["m1"]
 
+
+def test_notion_text_date_filter_and_value():
+    client = object.__new__(NotionClient)
+    client.date_property_type = "rich_text"
+    target = date(2026, 8, 22)
+
+    assert client._date_filter(target) == {
+        "rich_text": {"equals": "2026/8/22"}
+    }
+    assert client._date_value(target) == {
+        "rich_text": [{"text": {"content": "2026/8/22"}}]
+    }
+
+
+def test_notion_date_type_remains_supported():
+    client = object.__new__(NotionClient)
+    client.date_property_type = "date"
+    target = date(2026, 8, 22)
+
+    assert client._date_filter(target) == {"date": {"equals": "2026-08-22"}}
+    assert client._date_value(target) == {"date": {"start": "2026-08-22"}}
