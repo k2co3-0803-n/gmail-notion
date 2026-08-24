@@ -29,7 +29,7 @@ Repository Settings → Secrets and variables → Actions に以下のSecretsを
 
 Notionのプロパティ名が異なる場合だけ、Variablesに`NOTION_DATE_PROPERTY`と`NOTION_AMOUNT_PROPERTY`を登録します。日付列はタイトル型、金額列は数値型として処理します。
 
-ワークフローはAmsterdamの23時台を夏時間・冬時間ともカバーするようUTC 21:55と22:55に起動し、実行時にもAmsterdamの時刻を確認します。該当しない側は何も更新せず終了します。Actionsの遅延や日付をまたいだ再処理には、Run workflowの`target_date`で対象日を明示できます。
+ワークフローは毎日UTC 02:15（Amsterdamの03:15/冬時間、04:15/夏時間）に起動し、Amsterdamの前日分を同期します。GitHub Actionsの開始が多少遅れても対象日は変わりません。Run workflowの`target_date`で対象日を明示でき、空欄で手動実行した場合はAmsterdamの当日分を同期します。
 
 ## ローカル実行・テスト
 

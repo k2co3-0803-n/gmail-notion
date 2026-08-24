@@ -2,9 +2,9 @@ name: Sync card total to Notion
 
 on:
   schedule:
-    # Amsterdamの毎日23時台を通年カバーするため、UTC 21:55と22:55に実行。
-    # 日付判定はPython側でAmsterdam時間に変換するため、該当日の実行だけが当日を更新する。
-    - cron: "55 21,22 * * *"
+    # UTC 02:15 = Amsterdam 03:15 (冬) / 04:15 (夏)。
+    # 日付をまたいだ後にAmsterdamの前日分を確定させる。
+    - cron: "15 2 * * *"
   workflow_dispatch:
     inputs:
       target_date:
@@ -39,10 +39,11 @@ jobs:
         run: |
           if [ -n "$TARGET_DATE" ]; then
             python card_to_notion.py --date "$TARGET_DATE"
+          elif [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+            TARGET_DATE=$(TZ=Europe/Amsterdam date --date='yesterday' +%F)
+            echo "Amsterdamの前日 $TARGET_DATE を同期します"
+            python card_to_notion.py --date "$TARGET_DATE"
           else
-            if [ "$(TZ=Europe/Amsterdam date +%H)" != "23" ]; then
-              echo "Amsterdamでは23時台ではないためスキップします"
-              exit 0
-            fi
+            # 手動実行で日付が空ならAmsterdamの当日を同期する。
             python card_to_notion.py
           fi
