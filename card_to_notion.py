@@ -8,7 +8,7 @@ import html
 import os
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from email.header import decode_header, make_header
 from typing import Any, Iterable
 from zoneinfo import ZoneInfo
@@ -102,9 +102,13 @@ def gmail_service():
     return build("gmail", "v1", credentials=credentials, cache_discovery=False)
 
 
-def list_candidate_ids(service: Any) -> Iterable[str]:
+def list_candidate_ids(service: Any, target_date: date) -> Iterable[str]:
     page_token = None
-    query = f'subject:"{SUBJECT}" newer_than:2d'
+    start = datetime.combine(target_date, time.min, tzinfo=TIMEZONE)
+    end = datetime.combine(target_date + timedelta(days=1), time.min, tzinfo=TIMEZONE)
+    # Include the exact midnight boundary even if Gmail treats after as exclusive.
+    # collect_usages applies the final internalDate check.
+    query = f'subject:"{SUBJECT}" after:{int(start.timestamp()) - 1} before:{int(end.timestamp())}'
     while True:
         response = service.users().messages().list(
             userId="me", q=query, pageToken=page_token, maxResults=500
@@ -117,7 +121,7 @@ def list_candidate_ids(service: Any) -> Iterable[str]:
 
 def collect_usages(service: Any, target_date: date) -> list[Usage]:
     usages: list[Usage] = []
-    for message_id in list_candidate_ids(service):
+    for message_id in list_candidate_ids(service, target_date):
         message = service.users().messages().get(userId="me", id=message_id, format="full").execute()
         if header(message["payload"], "Subject") != SUBJECT:
             continue

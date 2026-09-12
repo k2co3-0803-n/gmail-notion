@@ -1,5 +1,7 @@
 import base64
-from datetime import date
+from datetime import date, datetime
+
+import pytest
 
 from card_to_notion import NotionClient, SUBJECT, collect_usages, parse_usage
 
@@ -68,3 +70,37 @@ def test_notion_title_date_filter_and_value():
     assert client._date_value(target) == {
         "title": [{"text": {"content": "2026/8/22"}}]
     }
+
+
+@pytest.mark.parametrize("day,start,end", [
+    (date(2020, 1, 15), "2020-01-14T23:00:00+00:00", "2020-01-15T23:00:00+00:00"),
+    (date(2026, 3, 29), "2026-03-28T23:00:00+00:00", "2026-03-29T22:00:00+00:00"),
+    (date(2026, 10, 25), "2026-10-24T22:00:00+00:00", "2026-10-25T23:00:00+00:00"),
+])
+def test_historical_search_and_dst_boundaries(day, start, end):
+    start_ms = int(datetime.fromisoformat(start).timestamp()) * 1000
+    end_ms = int(datetime.fromisoformat(end).timestamp()) * 1000
+
+    class SearchingMessages(Messages):
+        def list(self, **kwargs):
+            query = kwargs["q"]
+            assert "newer_than" not in query
+            after = int(query.split("after:")[1].split()[0]) * 1000
+            before = int(query.split("before:")[1].split()[0]) * 1000
+            assert after == start_ms - 1000
+            assert before == end_ms
+            return Execute({"messages": [
+                {"id": m["id"]} for m in self.data.values()
+                if after < int(m["internalDate"]) < before
+            ]})
+
+    service = Service([])
+    service._users._messages = SearchingMessages([
+        message("previous", str(start_ms - 1)),
+        message("midnight", str(start_ms)),
+        message("last", str(end_ms - 1)),
+        message("next", str(end_ms)),
+    ])
+    usages = collect_usages(service, day)
+    assert [u.message_id for u in usages] == ["midnight", "last"]
+    assert sum(u.amount for u in usages) == 2688
