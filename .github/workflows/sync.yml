@@ -33,6 +33,7 @@ jobs:
           GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_DATE_PROPERTY: ${{ vars.NOTION_DATE_PROPERTY || '日付' }}
           NOTION_AMOUNT_PROPERTY: ${{ vars.NOTION_AMOUNT_PROPERTY || 'Money I spent' }}
           TARGET_DATE: ${{ inputs.target_date }}

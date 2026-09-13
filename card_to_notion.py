@@ -19,7 +19,7 @@ from googleapiclient.discovery import build
 
 SUBJECT = "ご利用のお知らせ【三井住友カード】"
 TIMEZONE = ZoneInfo("Europe/Amsterdam")
-NOTION_VERSION = "2022-06-28"
+NOTION_VERSION = "2025-09-03"
 
 
 @dataclass(frozen=True)
@@ -137,6 +137,7 @@ def collect_usages(service: Any, target_date: date) -> list[Usage]:
 class NotionClient:
     def __init__(self) -> None:
         self.database_id = required_env("NOTION_DATABASE_ID")
+        self.data_source_id = os.getenv("NOTION_DATA_SOURCE_ID")
         self.date_property = os.getenv("NOTION_DATE_PROPERTY", "日付")
         self.amount_property = os.getenv("NOTION_AMOUNT_PROPERTY", "Money I spent")
         self.session = requests.Session()
@@ -156,6 +157,29 @@ class NotionClient:
             ) from exc
         return response.json()
 
+    def resolve_data_source_id(self) -> str:
+        if self.data_source_id:
+            return self.data_source_id
+        database = self._request("GET", f"https://api.notion.com/v1/databases/{self.database_id}")
+        sources = database.get("data_sources", [])
+        matches = []
+        for source in sources:
+            schema = self._request("GET", f"https://api.notion.com/v1/data_sources/{source['id']}")
+            properties = schema.get("properties", {})
+            if (properties.get(self.date_property, {}).get("type") == "title"
+                    and properties.get(self.amount_property, {}).get("type") == "number"):
+                matches.append(source)
+        if len(matches) != 1:
+            candidates = ", ".join(f"{s.get('name', '')} ({s['id']})" for s in sources)
+            raise RuntimeError(
+                f"同期先データソースを一意に選択できません（一致数: {len(matches)}）。"
+                f"{self.date_property!r} がタイトル型、{self.amount_property!r} が数値型か確認し、"
+                "NOTION_DATA_SOURCE_ID に同期先のIDを設定してください。"
+                f"データソース一覧: {candidates or 'なし'}"
+            )
+        self.data_source_id = matches[0]["id"]
+        return self.data_source_id
+
     def _date_filter(self, target_date: date) -> dict[str, Any]:
         value = f"{target_date.year}/{target_date.month}/{target_date.day}"
         return {"title": {"equals": value}}
@@ -165,7 +189,7 @@ class NotionClient:
         return {"title": [{"text": {"content": value}}]}
 
     def find_page(self, target_date: date) -> str | None:
-        url = f"https://api.notion.com/v1/databases/{self.database_id}/query"
+        url = f"https://api.notion.com/v1/data_sources/{self.resolve_data_source_id()}/query"
         payload: dict[str, Any] = {
             "filter": {
                 "property": self.date_property,
@@ -191,7 +215,7 @@ class NotionClient:
             self._request("PATCH", f"https://api.notion.com/v1/pages/{page_id}", json={"properties": properties})
             return "updated"
         self._request("POST", "https://api.notion.com/v1/pages", json={
-            "parent": {"database_id": self.database_id},
+            "parent": {"type": "data_source_id", "data_source_id": self.resolve_data_source_id()},
             "properties": properties,
         })
         return "created"

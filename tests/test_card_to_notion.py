@@ -104,3 +104,84 @@ def test_historical_search_and_dst_boundaries(day, start, end):
     usages = collect_usages(service, day)
     assert [u.message_id for u in usages] == ["midnight", "last"]
     assert sum(u.amount for u in usages) == 2688
+
+
+@pytest.fixture
+def notion_client(monkeypatch):
+    monkeypatch.setenv("NOTION_DATABASE_ID", "database")
+    monkeypatch.setenv("NOTION_TOKEN", "test-token")
+    monkeypatch.delenv("NOTION_DATA_SOURCE_ID", raising=False)
+    monkeypatch.delenv("NOTION_DATE_PROPERTY", raising=False)
+    monkeypatch.delenv("NOTION_AMOUNT_PROPERTY", raising=False)
+    return NotionClient()
+
+
+@pytest.mark.parametrize("existing", [True, False])
+def test_upsert_uses_explicit_data_source(notion_client, monkeypatch, existing):
+    client = notion_client
+    client.data_source_id = "selected"
+    calls = []
+
+    def request(method, url, **kwargs):
+        calls.append((method, url, kwargs.get("json")))
+        if url.endswith("/query"):
+            return {"results": [{"id": "page"}] if existing else [], "has_more": False}
+        return {}
+
+    monkeypatch.setattr(client, "_request", request)
+    assert client.session.headers["Notion-Version"] == "2025-09-03"
+    assert client.upsert_total(date(2026, 9, 12), 1344) == ("updated" if existing else "created")
+    assert calls[0][0:2] == ("POST", "https://api.notion.com/v1/data_sources/selected/query")
+    assert calls[0][2]["filter"] == {"property": "日付", "title": {"equals": "2026/9/12"}}
+    method, url, body = calls[1]
+    assert body["properties"]["Money I spent"] == {"number": 1344}
+    if existing:
+        assert (method, url) == ("PATCH", "https://api.notion.com/v1/pages/page")
+    else:
+        assert body["parent"] == {"type": "data_source_id", "data_source_id": "selected"}
+
+
+@pytest.mark.parametrize("matching", [[], ["a"], ["a", "b"]])
+def test_discovery_requires_unique_matching_schema(notion_client, monkeypatch, matching):
+    calls = []
+
+    def request(method, url, **kwargs):
+        calls.append(url)
+        assert method == "GET"  # Ambiguous discovery must never write or query pages.
+        if url.endswith("/databases/database"):
+            return {"data_sources": [{"id": "a", "name": "Expenses"}, {"id": "b", "name": "Other"}]}
+        source_id = url.rsplit("/", 1)[1]
+        return {"properties": {
+            "日付": {"type": "title"},
+            "Money I spent": {"type": "number" if source_id in matching else "formula"},
+        }}
+
+    monkeypatch.setattr(notion_client, "_request", request)
+    if len(matching) == 1:
+        assert notion_client.resolve_data_source_id() == "a"
+        assert notion_client.resolve_data_source_id() == "a"
+        assert len(calls) == 3
+    else:
+        with pytest.raises(RuntimeError, match="NOTION_DATA_SOURCE_ID"):
+            notion_client.upsert_total(date(2026, 9, 12), 1344)
+
+
+def test_empty_database_does_not_write(notion_client, monkeypatch):
+    monkeypatch.setattr(notion_client, "_request", lambda *args, **kwargs: {"data_sources": []})
+    with pytest.raises(RuntimeError, match="一覧: なし"):
+        notion_client.resolve_data_source_id()
+
+
+def test_query_pagination(notion_client, monkeypatch):
+    notion_client.data_source_id = "selected"
+    payloads = []
+
+    def request(method, url, **kwargs):
+        payloads.append(dict(kwargs["json"]))
+        if len(payloads) == 1:
+            return {"results": [], "has_more": True, "next_cursor": "cursor"}
+        return {"results": [{"id": "page"}], "has_more": False}
+
+    monkeypatch.setattr(notion_client, "_request", request)
+    assert notion_client.find_page(date(2026, 9, 12)) == "page"
+    assert payloads[1]["start_cursor"] == "cursor"
